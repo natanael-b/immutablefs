@@ -1,0 +1,155 @@
+#!/usr/bin/env lua
+
+
+-- Immutable system modes
+--
+-- RO_dirs  -- Directories to be made read-only
+-- RO_files -- Files to become read-only even if parent directory is read-write
+-- RW_dirs  -- Directories to be read and written even if the parent directory is read-only
+-- RW_files -- Files to be read and written even if the directory is read-only (in the case of directories, the content files will be
+--             can be modified, but new files cannot be created and existing files cannot be removed or renamed)
+
+Modes = {
+  strict = {
+    RO_dirs  = {"/etc","/usr","/var","/lib","/lib64","/bin","/sbin", "/lib32"};
+    RO_files = {""};
+    RW_dirs  = {"/var/lib/flatpak","/var/lib/snapd","/etc/wpa_supplicant/","/var/logs","/var/cache","/var/tmp","/var/www"};
+    RW_files = {"/etc/mtab","/etc/group","/etc/passwd","/etc/shadow","/etc/resolv.conf","/etc/networks"} ;
+  };
+
+  basic = {
+    RO_dirs  = {"/etc","/usr","/var/lib","/lib","/lib64","/bin","/sbin", "/lib32"};
+    RO_files = {""};
+    RW_dirs  = {"/var/lib/flatpak","/var/lib/snapd"};
+    RW_files = {"/etc"} ;
+  };
+
+  classic = {
+    RO_dirs  = {"/usr","/lib","/lib64","/bin","/sbin", "/lib32"};
+    RO_files = {""};
+    RW_dirs  = {""};
+    RW_files = {""};
+  };
+}
+
+
+local help = [[
+immmutablefs - v1.0
+--------------------------------- 
+
+A simple and easy-to-use on-demand immutability based on file attributes.
+
+Usage:
+  
+  immmutablefs mode [profile]
+
+Where [profile] can be:
+  * strict   -- The most aggressive, the whole system, except for really necessary files, is blocked
+  * basic    -- It is recommended, the main system directories and files are blocked, but in /var
+                only /var/lib is locked and /etc will allow all files to be modified but newer 
+                files can't be created or existing ones can't be removed, moved or renamed
+  * classic  -- The most permissive, locks only /usr, like OSTree/Almost by default
+  * unlocked -- Disable immmutablefs
+
+Example:
+  
+  immmutablefs mode basic
+
+]]
+
+function unlockfs(mode)
+    local unlocked = {}
+    for i, dir in ipairs(mode.RO_dirs) do
+        if unlocked[dir] == nil then
+            unlocked[dir] = true
+            if dir ~= "" then
+                os.execute("find '"..dir.."' -type d -exec chattr -i {} ';'")
+            end
+        end
+    end
+    for i, dir in ipairs(mode.RO_files) do
+        if unlocked[dir] == nil then
+            unlocked[dir] = true
+            if dir ~= "" then
+                os.execute("find '"..dir.."' -type f -exec chattr -i {} ';'")
+            end
+        end
+    end
+end
+
+function lockfs(mode)
+    for name, mode_to_unlock in pairs(Modes) do
+        unlockfs(mode_to_unlock)
+    end
+
+    for i, dir in ipairs(mode.RO_dirs) do
+        if dir ~= "" then
+            os.execute("find '"..dir.."' -type d -exec chattr +i {} ';'")
+        end
+    end
+    for i, dir in ipairs(mode.RO_files) do
+        if dir ~= "" then
+            os.execute("find '"..dir.."' -type f -exec chattr +i {} ';'")
+        end
+    end
+    
+    for i, dir in ipairs(mode.RW_dirs) do
+        if dir ~= "" then
+            os.execute("find '"..dir.."' -type d -exec chattr -i {} ';'")
+        end
+    end
+    for i, dir in ipairs(mode.RW_files) do
+        if dir ~= "" then
+            os.execute("find '"..dir.."' -type f -exec chattr -i {} ';'")
+        end
+    end
+end
+
+-- Get running user id
+local id = assert(io.popen('id', 'r'))
+local uuid = id:read('*all'):gsub("%(.*",""):gsub(".*=","")
+id:close()
+
+if uuid ~= "0" then
+    print("Error: you must run immmutablefs as root")
+    print(help)
+    os.exit()
+end
+
+if arg[1] == "-h" or arg[1] == "--help" or arg[1] == "/h"  then
+    print(help)
+    os.exit()
+end
+
+if arg[2] == nil then
+    print("Error: missing mode")
+    print(help)
+    os.exit()
+end
+
+if tostring(arg[2]):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+"," ") == "" then
+    print("Error: missing mode")
+    print(help)
+    os.exit()
+end
+
+if arg[2] == "unlocked" then
+    local time = os.time()
+    print("Unlocking file system...")
+    for name, mode_to_unlock in pairs(Modes) do
+        unlockfs(mode_to_unlock)
+    end
+    print("It took "..(os.time()-time).." seconds")
+    os.exit()
+end
+
+if Modes[arg[2]] == nil then
+    print("Error: invalid mode")
+    print(help)
+    os.exit()
+end
+
+local time = os.time()
+print("Locking file system with '"..arg[2].."' mode...")
+lockfs(Modes[arg[2]])
+print("It took "..(os.time()-time).." seconds")
