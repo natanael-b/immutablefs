@@ -1,6 +1,5 @@
 #!/usr/bin/env lua
 
-
 -- Immutable system modes
 --
 -- RO_dirs  -- Directories to be made read-only
@@ -44,8 +43,8 @@ Usage:
   immmutablefs mode [profile]
 
 Where [profile] can be:
-  * strict   -- The most aggressive, the whole system, except for really necessary files, is blocked
-  * basic    -- It is recommended, the main system directories and files are blocked, but in /var
+  * strict   -- The most aggressive, the whole system, except for really necessary files, is locked
+  * basic    -- It is recommended, the main system directories and files are locked, but in /var
                 only /var/lib is locked and /etc will allow all files to be modified but newer 
                 files can't be created or existing ones can't be removed, moved or renamed
   * classic  -- The most permissive, locks only /usr, like OSTree/Almost by default
@@ -121,13 +120,7 @@ if arg[1] == "-h" or arg[1] == "--help" or arg[1] == "/h"  then
     os.exit()
 end
 
-if arg[2] == nil then
-    print("Error: missing mode")
-    print(help)
-    os.exit()
-end
-
-if tostring(arg[2]):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+"," ") == "" then
+if arg[2] == nil or tostring(arg[2]):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+"," ") == "" then
     print("Error: missing mode")
     print(help)
     os.exit()
